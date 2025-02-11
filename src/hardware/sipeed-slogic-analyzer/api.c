@@ -63,6 +63,8 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 
 	(void)options;
 
+	conn = NULL;
+
 	devices = NULL;
 	drvc = di->context;
 	drvc->instances = NULL;
