@@ -65,7 +65,7 @@ static void LIBUSB_CALL receive_transfer(struct libusb_transfer *transfer) {
 				break;
 			}
 
-			{
+			if (devc->cur_samplechannel != 16) {
 				uint8_t *ptr = transfer->buffer;
 				size_t len = transfer->actual_length;
 				if (devc->cur_samplechannel != 8) {
@@ -83,6 +83,48 @@ static void LIBUSB_CALL receive_transfer(struct libusb_transfer *transfer) {
 				if (devc->cur_samplechannel != 8) {
 					g_free(ptr);
 				}
+			} else {
+				sr_dbg("samplechannel: %d, actual_length: %u", devc->cur_samplechannel, transfer->actual_length);
+				// devc->cur_samplechannel == 16
+				uint8_t * d = transfer->buffer;
+				size_t len = transfer->actual_length;
+				// while (*d != 0xaa)
+				// 	d++;
+				// len -= transfer->buffer - d;
+				// if (len % devc->cur_samplechannel)
+				// 	len -= len % devc->cur_samplechannel;
+				sr_dbg("HEAD: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+					d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10], d[11], d[12], d[13], d[14], d[15]);
+
+				uint8_t *ptr = g_malloc(len);
+
+				for(size_t i=0; i<len; i+=devc->cur_samplechannel) {
+					for(size_t j=0; j< 8; j++) {
+						#define B(n) (((d[i+(n)] >> 7-j) & 0x1) << ((n)%8))
+						ptr[i+j*2+0] =
+							B(0)|B(1)|B(2)|B(3)|B(4)|B(5)|B(6)|B(7);
+						ptr[i+j*2+1] =
+							B(8)|B(9)|B(10)|B(11)|B(12)|B(13)|B(14)|B(15);
+						#undef B
+
+						// ptr[i+j*2+0] |= 0x1;
+						// ptr[i+j*2+1] |= 0x80;
+					}
+				}
+
+				struct sr_datafeed_logic logic = {
+					.length = len,
+					.unitsize = 2,
+					.data = ptr,
+				};
+			
+				struct sr_datafeed_packet packet = {
+					.type = SR_DF_LOGIC,
+					.payload = &logic
+				};
+			
+				sr_session_send(sdi, &packet);
+				g_free(ptr);
 			}
 
 			size_t bytes_to_transfer = devc->bytes_need_transfer -
@@ -194,7 +236,7 @@ SR_PRIV int sipeed_slogic_acquisition_start(const struct sr_dev_inst *sdi)
 			devc->cur_samplechannel, 
 			devc->limit_samples);
 
-	clear_ep(EP_IN, usb->devhdl);
+	// clear_ep(EP_IN, usb->devhdl);
 
 	devc->acq_aborted = FALSE;
   	devc->bytes_need_transfer = 0;
@@ -272,9 +314,13 @@ SR_PRIV int sipeed_slogic_acquisition_start(const struct sr_dev_inst *sdi)
 	cmd.sample_rate = devc->cur_samplerate / SR_MHZ(1);
 	cmd.sample_channel = devc->cur_samplechannel;
 
+	// ret = libusb_control_transfer(
+	// 	usb->devhdl, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT, CMD_START, 0x0000,
+	// 	0x0000, (unsigned char *)&cmd, 3 /*sizeof(cmd)*/, 100);
+	uint8_t cmd_start[] = {0x00, 0x00, 0x00, 0x01};
 	ret = libusb_control_transfer(
-		usb->devhdl, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT, CMD_START, 0x0000,
-		0x0000, (unsigned char *)&cmd, 3 /*sizeof(cmd)*/, 100);
+		usb->devhdl, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT, 1, 4,
+		0x0000, (unsigned char *)&cmd_start, sizeof(cmd_start), 100);
 	if (ret < 0) {
 		sr_dbg("Unable to send start command: %s", libusb_error_name(ret));
 		return SR_ERR_NA;
