@@ -86,33 +86,28 @@ static void LIBUSB_CALL receive_transfer(struct libusb_transfer *transfer) {
 					g_free(ptr);
 				}
 			} else {
-				sr_dbg("samplechannel: %d, actual_length: %u", devc->cur_samplechannel, transfer->actual_length);
+				// sr_dbg("samplechannel: %d, actual_length: %u", devc->cur_samplechannel, transfer->actual_length);
 				// devc->cur_samplechannel == 16
 				uint8_t * d = transfer->buffer;
 				size_t len = transfer->actual_length;
-				// while (*d != 0xaa)
-				// 	d++;
-				// len -= transfer->buffer - d;
-				// if (len % devc->cur_samplechannel)
-				// 	len -= len % devc->cur_samplechannel;
-				sr_dbg("HEAD: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-					d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10], d[11], d[12], d[13], d[14], d[15]);
+				// sr_dbg("HEAD: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+				// 	d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10], d[11], d[12], d[13], d[14], d[15]);
 
 				uint8_t *ptr = g_malloc(len);
 
-				for(size_t i=0; i<len; i+=devc->cur_samplechannel) {
-					for(size_t j=0; j< 8; j++) {
-						#define B(n) (((d[i+(n)] >> 7-j) & 0x1) << ((n)%8))
-						ptr[i+j*2+0] =
-							B(0)|B(1)|B(2)|B(3)|B(4)|B(5)|B(6)|B(7);
-						ptr[i+j*2+1] =
-							B(8)|B(9)|B(10)|B(11)|B(12)|B(13)|B(14)|B(15);
-						#undef B
+				// for(size_t i=0; i<len; i+=devc->cur_samplechannel) {
+				// 	for(size_t j=0; j< 8; j++) {
+				// 		#define B(n) (((d[i+(n)] >> 7-j) & 0x1) << ((n)%8))
+				// 		ptr[i+j*2+0] =
+				// 			B(0)|B(1)|B(2)|B(3)|B(4)|B(5)|B(6)|B(7);
+				// 		ptr[i+j*2+1] =
+				// 			B(8)|B(9)|B(10)|B(11)|B(12)|B(13)|B(14)|B(15);
+				// 		#undef B
 
-						// ptr[i+j*2+0] |= 0x1;
-						// ptr[i+j*2+1] |= 0x80;
-					}
-				}
+				// 		// ptr[i+j*2+0] |= 0x1;
+				// 		// ptr[i+j*2+1] |= 0x80;
+				// 	}
+				// }
 
 				struct sr_datafeed_logic logic = {
 					.length = len,
