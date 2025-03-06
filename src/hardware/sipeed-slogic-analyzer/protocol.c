@@ -48,14 +48,16 @@ static void LIBUSB_CALL receive_transfer(struct libusb_transfer *transfer) {
 	devc = sdi->priv;
 	usb  = sdi->conn;
 
-	sr_dbg("usb status: %d", transfer->status);
+	sr_dbg("[%p]usb status: %d", transfer, transfer->status);
 	switch (transfer->status) {
 		case LIBUSB_TRANSFER_COMPLETED: 
 		case LIBUSB_TRANSFER_TIMED_OUT: { /* may have received some data */
-			sr_dbg("\ttransfing: %u, transfered: %u, sum: %u/%u",
-					devc->bytes_transferring, devc->bytes_transfered,
-					(devc->bytes_transfered + devc->bytes_transferring),
-					devc->bytes_need_transfer);
+			sr_dbg("\ttransfing: %u - %u, done: %u + %u, remain: %u/%u",
+				devc->bytes_transferring, transfer->length,
+				devc->bytes_transfered, transfer->actual_length,
+				devc->bytes_need_transfer + (transfer->length - transfer->actual_length) - (devc->bytes_transfered + devc->bytes_transferring),
+				devc->bytes_need_transfer
+			);
 
 			devc->bytes_transfered += transfer->actual_length;
 			devc->bytes_transferring -= transfer->length;
@@ -231,6 +233,17 @@ SR_PRIV int sipeed_slogic_acquisition_start(const struct sr_dev_inst *sdi)
 	// TODO
 	// if(devc->cur_samplechannel != 8) return SR_ERR_SAMPLERATE;
 
+	uint8_t cmd_rst[] = {0x02, 0x00, 0x00, 0x00};
+	ret = libusb_control_transfer(
+		usb->devhdl, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT, 1, 4,
+		0x0000, (unsigned char *)&cmd_rst, sizeof(cmd_rst), 100);
+	if (ret < 0) {
+		sr_dbg("Unable to send start command: %s", libusb_error_name(ret));
+		return SR_ERR_NA;
+	}
+	sr_dbg("CMD_RST");
+
+
 	sr_dbg("samplerate: %uHz@%uch, samples: %u",
 			devc->cur_samplerate / SR_MHZ(1), 
 			devc->cur_samplechannel, 
@@ -317,7 +330,7 @@ SR_PRIV int sipeed_slogic_acquisition_start(const struct sr_dev_inst *sdi)
 	// ret = libusb_control_transfer(
 	// 	usb->devhdl, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT, CMD_START, 0x0000,
 	// 	0x0000, (unsigned char *)&cmd, 3 /*sizeof(cmd)*/, 100);
-	uint8_t cmd_start[] = {0x00, 0x00, 0x00, 0x01};
+	uint8_t cmd_start[] = {0x01, 0x00, 0x00, 0x00};
 	ret = libusb_control_transfer(
 		usb->devhdl, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT, 1, 4,
 		0x0000, (unsigned char *)&cmd_start, sizeof(cmd_start), 100);

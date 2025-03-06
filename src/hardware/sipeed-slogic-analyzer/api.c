@@ -84,7 +84,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 	}
 	
 	if(!conn) {
-		conn = "359f.3003";
+		conn = "359f.3031";
 	}
 
 	/* Find all slogic compatible devices. */
