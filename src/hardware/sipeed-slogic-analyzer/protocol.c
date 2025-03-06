@@ -194,7 +194,8 @@ static int handle_events(int fd, int revents, void *cb_data)
 			devc->transfers[i] = NULL;
 		}
 
-		usb_source_remove(sdi->session, drvc->sr_ctx);
+		// usb_source_remove(sdi->session, drvc->sr_ctx);
+		sr_session_source_remove(sdi->session, -1 * (size_t)drvc->sr_ctx->libusb_ctx);
 		std_session_send_df_end(sdi);
 	}
 
@@ -258,15 +259,16 @@ SR_PRIV int sipeed_slogic_acquisition_start(const struct sr_dev_inst *sdi)
 
 	devc->timeout = get_timeout(devc);
 	sr_dbg("timeout: %ums", devc->timeout);
-	usb_source_add(sdi->session, drvc->sr_ctx, 10,
-			handle_events, (void *)sdi);
+	// usb_source_add(sdi->session, drvc->sr_ctx, 10,
+	// 		handle_events, (void *)sdi);
+
+	sr_session_source_add(sdi->session, -1 * (size_t)drvc->sr_ctx->libusb_ctx, 0, devc->timeout, handle_events, (void *)sdi);
 
 	/* compute needed bytes */
 	uint64_t samples_in_bytes = devc->limit_samples * devc->cur_samplechannel / 8;
 	devc->bytes_need_transfer = samples_in_bytes / devc->transfers_buffer_size;
 	devc->bytes_need_transfer += !!(samples_in_bytes % devc->transfers_buffer_size);
 	devc->bytes_need_transfer *= devc->transfers_buffer_size;
-
 
 	while (devc->transfers_used < NUM_MAX_TRANSFERS && devc->bytes_transfered
 			+ devc->bytes_transferring < devc->bytes_need_transfer)
@@ -296,7 +298,7 @@ SR_PRIV int sipeed_slogic_acquisition_start(const struct sr_dev_inst *sdi)
 
 		libusb_fill_bulk_transfer(transfer, usb->devhdl, EP_IN | LIBUSB_ENDPOINT_IN,
 									dev_buf, bytes_to_transfer, receive_transfer,
-									sdi, devc->timeout * (devc->transfers_used + 1));
+									sdi, 3500 + devc->timeout * (devc->transfers_used + 1));
 		transfer->actual_length = 0;
 
 		ret = libusb_submit_transfer(transfer);
