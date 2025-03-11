@@ -95,19 +95,19 @@ static void LIBUSB_CALL receive_transfer(struct libusb_transfer *transfer) {
 
 				uint8_t *ptr = g_malloc(len);
 
-				// for(size_t i=0; i<len; i+=devc->cur_samplechannel) {
-				// 	for(size_t j=0; j< 8; j++) {
-				// 		#define B(n) (((d[i+(n)] >> 7-j) & 0x1) << ((n)%8))
-				// 		ptr[i+j*2+0] =
-				// 			B(0)|B(1)|B(2)|B(3)|B(4)|B(5)|B(6)|B(7);
-				// 		ptr[i+j*2+1] =
-				// 			B(8)|B(9)|B(10)|B(11)|B(12)|B(13)|B(14)|B(15);
-				// 		#undef B
+				for(size_t i=0; i<len; i+=devc->cur_samplechannel) {
+					for(size_t j=0; j< 8; j++) {
+						#define B(n) (((d[i+(n)] >> 7-j) & 0x1) << ((n)%8))
+						ptr[i+j*2+0] =
+							B(0)|B(1)|B(2)|B(3)|B(4)|B(5)|B(6)|B(7);
+						ptr[i+j*2+1] =
+							B(8)|B(9)|B(10)|B(11)|B(12)|B(13)|B(14)|B(15);
+						#undef B
 
-				// 		// ptr[i+j*2+0] |= 0x1;
-				// 		// ptr[i+j*2+1] |= 0x80;
-				// 	}
-				// }
+						// ptr[i+j*2+0] |= 0x1;
+						// ptr[i+j*2+1] |= 0x80;
+					}
+				}
 
 				struct sr_datafeed_logic logic = {
 					.length = len,
@@ -132,7 +132,7 @@ static void LIBUSB_CALL receive_transfer(struct libusb_transfer *transfer) {
 			if (bytes_to_transfer) {
 				transfer->length = bytes_to_transfer;
 				transfer->actual_length = 0;
-				transfer->timeout = devc->timeout * devc->transfers_used;
+				transfer->timeout = 1000 + devc->timeout * devc->transfers_used;
 				ret = libusb_submit_transfer(transfer);
 				if (ret) {
 					sr_warn("Failed to submit transfer: %s", libusb_error_name(ret));

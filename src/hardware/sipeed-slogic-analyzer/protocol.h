@@ -93,7 +93,7 @@ struct dev_context {
 
 static inline void devc_set_samplerate(struct dev_context *devc, uint64_t new_samplerate) {
 	devc->cur_samplerate = new_samplerate;
-	if (new_samplerate == SR_MHZ(25)) {
+	if (1) {
 		devc->cur_samplechannel = 16;
 	} else if (new_samplerate >= SR_MHZ(120)) {
 		devc->cur_samplechannel = 2;
