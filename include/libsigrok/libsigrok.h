@@ -529,9 +529,22 @@ struct sr_analog_encoding {
 	gboolean is_float;
 	gboolean is_bigendian;
 	/**
-	 * Number of significant digits after the decimal point if positive,
-	 * or number of non-significant digits before the decimal point if
-	 * negative (refers to the value we actually read on the wire).
+	 * Number of significant digits after the decimal point, if positive.
+	 * When negative, exponent with reversed polarity that is necessary to
+	 * express the value with all digits without a decimal point.
+	 * Refers to the value we actually read on the wire.
+	 *
+	 * Examples:
+	 *
+	 * | Disp. value | Exp. notation       | Exp. not. normalized | digits |
+	 * |-------------|---------------------|----------------------|--------|
+	 * |  12.34 MOhm |  1.234 * 10^7   Ohm |    1234 * 10^4   Ohm |     -4 |
+	 * | 1.2345 MOhm | 1.2345 * 10^6   Ohm |   12345 * 10^2   Ohm |     -2 |
+	 * |  123.4 kOhm |  1.234 * 10^5   Ohm |    1234 * 10^2   Ohm |     -2 |
+	 * |   1234  Ohm |  1.234 * 10^3   Ohm |    1234 * 10^0   Ohm |      0 |
+	 * |  12.34  Ohm |  1.234 * 10^1   Ohm |    1234 * 10^-2  Ohm |      2 |
+	 * | 0.0123  Ohm |   1.23 * 10^-2  Ohm |     123 * 10^-4  Ohm |      4 |
+	 * |  1.234 pF   |  1.234 * 10^-12 F   |    1234 * 10^-15 F   |     15 |
 	 */
 	int8_t digits;
 	gboolean is_digits_decimal;
@@ -548,10 +561,22 @@ struct sr_analog_meaning {
 
 struct sr_analog_spec {
 	/**
-	 * Number of significant digits after the decimal point if positive,
-	 * or number of non-significant digits before the decimal point if
-	 * negative (refers to vendor specifications/datasheet or actual
-	 * device display).
+	 * Number of significant digits after the decimal point, if positive.
+	 * When negative, exponent with reversed polarity that is necessary to
+	 * express the value with all digits without a decimal point.
+	 * Refers to vendor specifications/datasheet or actual device display.
+	 *
+	 * Examples:
+	 *
+	 * | On the wire | Exp. notation       | Exp. not. normalized | spec_digits |
+	 * |-------------|---------------------|----------------------|-------------|
+	 * |  12.34 MOhm |  1.234 * 10^7   Ohm |    1234 * 10^4   Ohm |          -4 |
+	 * | 1.2345 MOhm | 1.2345 * 10^6   Ohm |   12345 * 10^2   Ohm |          -2 |
+	 * |  123.4 kOhm |  1.234 * 10^5   Ohm |    1234 * 10^2   Ohm |          -2 |
+	 * |   1234  Ohm |  1.234 * 10^3   Ohm |    1234 * 10^0   Ohm |           0 |
+	 * |  12.34  Ohm |  1.234 * 10^1   Ohm |    1234 * 10^-2  Ohm |           2 |
+	 * | 0.0123  Ohm |   1.23 * 10^-2  Ohm |     123 * 10^-4  Ohm |           4 |
+	 * |  1.234 pF   |  1.234 * 10^-12 F   |    1234 * 10^-15 F   |          15 |
 	 */
 	int8_t spec_digits;
 };
@@ -729,6 +754,16 @@ enum sr_configkey {
 	 * or multiplexer.
 	 */
 	SR_CONF_MULTIPLEXER,
+
+	/**
+	 * The device can act as a digital delay generator.
+	 */
+	SR_CONF_DELAY_GENERATOR,
+
+	/**
+	 * The device can act as a frequency counter.
+	 */
+	SR_CONF_FREQUENCY_COUNTER,
 
 	/* Update sr_key_info_config[] (hwdriver.c) upon changes! */
 
@@ -1104,6 +1139,23 @@ enum sr_configkey {
 	 */
 	SR_CONF_RESISTANCE_TARGET,
 
+	/**
+	 * Over-current protection (OCP) delay
+	 * @arg type: double (time)
+	 * @arg get: get current delay
+	 * @arg set: set new delay
+	 */
+	SR_CONF_OVER_CURRENT_PROTECTION_DELAY,
+
+	/**
+	 * Signal inversion.
+	 * @arg type: boolean
+	 * @arg get: @b true if the signal is inverted or has negative polarity,
+	 *           @b false otherwise
+	 * @arg set: set @b true to invert the signal
+	 */
+	SR_CONF_INVERTED,
+
 	/* Update sr_key_info_config[] (hwdriver.c) upon changes! */
 
 	/*--- Special stuff -------------------------------------------------*/
@@ -1178,6 +1230,42 @@ enum sr_configkey {
 
 	/** Self test mode. */
 	SR_CONF_TEST_MODE,
+
+	/**
+	 * Over-power protection (OPP) feature
+	 * @arg type: boolean
+	 * @arg get: @b true if currently enabled
+	 * @arg set: enable/disable
+	 */
+	SR_CONF_OVER_POWER_PROTECTION_ENABLED,
+
+	/**
+	 * Over-power protection (OPP) active
+	 * @arg type: boolean
+	 * @arg get: @b true if device has activated OPP, i.e. the current power
+	 *      exceeds the over-power protection threshold.
+	 */
+	SR_CONF_OVER_POWER_PROTECTION_ACTIVE,
+
+	/**
+	 * Over-power protection (OPP) threshold
+	 * @arg type: double (current)
+	 * @arg get: get current threshold
+	 * @arg set: set new threshold
+	 */
+	SR_CONF_OVER_POWER_PROTECTION_THRESHOLD,
+
+	/**
+	 * Current Resistance.
+	 * @arg type: double
+	 * @arg get: get measured resistance
+	 */
+	SR_CONF_RESISTANCE,
+
+	/**
+	 * Gate time.
+	 */
+	SR_CONF_GATE_TIME,
 
 	/* Update sr_key_info_config[] (hwdriver.c) upon changes! */
 };

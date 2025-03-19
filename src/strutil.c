@@ -174,7 +174,7 @@ SR_PRIV int sr_atoul_base(const char *str, unsigned long *ret, char **end, int b
 	/* Add "0b" prefix support which strtol(3) may be missing. */
 	while (str && isspace(*str))
 		str++;
-	if (!base && strncmp(str, "0b", strlen("0b")) == 0) {
+	if ((!base || base == 2) && strncmp(str, "0b", strlen("0b")) == 0) {
 		str += strlen("0b");
 		base = 2;
 	}
@@ -340,59 +340,17 @@ SR_PRIV int sr_atod_ascii(const char *str, double *ret)
  */
 SR_PRIV int sr_atod_ascii_digits(const char *str, double *ret, int *digits)
 {
-	const char *p;
-	int *dig_ref, m_dig, exp;
-	char c;
+	int d;
 	double f;
 
-	/*
-	 * Convert floating point text to the number value, _and_ get
-	 * the value's precision in the process. Steps taken to do it:
-	 * - Skip leading whitespace.
-	 * - Count the number of decimals after the mantissa's period.
-	 * - Get the exponent's signed value.
-	 *
-	 * This implementation still uses common code for the actual
-	 * conversion, but "violates API layers" by duplicating the
-	 * text scan, to get the number of significant digits.
-	 */
-	p = str;
-	while (*p && isspace(*p))
-		p++;
-	if (*p == '-' || *p == '+')
-		p++;
-	m_dig = 0;
-	exp = 0;
-	dig_ref = NULL;
-	while (*p) {
-		c = *p++;
-		if (toupper(c) == 'E') {
-			exp = strtol(p, NULL, 10);
-			break;
-		}
-		if (c == '.') {
-			m_dig = 0;
-			dig_ref = &m_dig;
-			continue;
-		}
-		if (isdigit(c)) {
-			if (dig_ref)
-				(*dig_ref)++;
-			continue;
-		}
-		/* Need not warn, conversion will fail. */
-		break;
-	}
-	sr_spew("atod digits: txt \"%s\" -> m %d, e %d -> digits %d",
-		str, m_dig, exp, m_dig + -exp);
-	m_dig += -exp;
-
-	if (sr_atod_ascii(str, &f) != SR_OK)
+	if (sr_count_digits(str, &d) != SR_OK || sr_atod_ascii(str, &f) != SR_OK)
 		return SR_ERR;
+
 	if (ret)
 		*ret = f;
+
 	if (digits)
-		*digits = m_dig;
+		*digits = d;
 
 	return SR_OK;
 }
@@ -436,6 +394,100 @@ SR_PRIV int sr_atof_ascii(const char *str, float *ret)
 	*/
 
 	*ret = (float) tmp;
+	return SR_OK;
+}
+
+/**
+ * Convert text to a floating point value, and get its precision.
+ *
+ * @param[in] str The input text to convert.
+ * @param[out] ret The conversion result, a double precision float number.
+ * @param[out] digits The number of significant decimals.
+ *
+ * @returns SR_OK in case of successful text to number conversion.
+ * @returns SR_ERR when conversion fails.
+ */
+SR_PRIV int sr_atof_ascii_digits(const char *str, float *ret, int *digits)
+{
+	int d;
+	float f;
+
+	if (sr_count_digits(str, &d) != SR_OK || sr_atof_ascii(str, &f) != SR_OK)
+		return SR_ERR;
+
+	if (ret)
+		*ret = f;
+
+	if (digits)
+		*digits = d;
+
+	return SR_OK;
+}
+
+/**
+ * Get the precision of a floating point number.
+ *
+ * @param[in] str The input text to convert.
+ * @param[out] digits The number of significant decimals.
+ *
+ * @returns SR_OK in case of successful.
+ * @returns SR_ERR when conversion fails.
+ *
+ * @private
+ */
+SR_PRIV int sr_count_digits(const char *str, int *digits)
+{
+	const char *p = str;
+	char *exp_end;
+	int d_int = 0;
+	int d_dec = 0;
+	int exp = 0;
+
+	/* Skip leading spaces */
+	while ((*p) && isspace(*p))
+		p++;
+
+	/* Skip the integer part */
+	if ((*p == '-') || (*p == '+'))
+		p++;
+	while (isdigit(*p)) {
+		d_int++;
+		p++;
+	}
+
+	/* Count decimal digits. */
+	if (*p == '.') {
+		p++;
+		while (isdigit(*p)) {
+			p++;
+			d_dec++;
+		}
+	}
+
+	/* Parse the exponent */
+	if (toupper(*p) == 'E') {
+		p++;
+		errno = 0;
+		exp = strtol(p, &exp_end, 10);
+		if (errno) {
+			sr_spew("Failed to parse exponent: txt \"%s\", e \"%s\"",
+				str, p);
+			return SR_ERR;
+		}
+		p = exp_end;
+	}
+
+	sr_spew("count digits: txt \"%s\" -> d_int %d, d_dec %d, e %d "
+		"-> digits %d\n",
+		str, d_int, d_dec, exp, d_dec - exp);
+
+	/* We should have parsed the whole string by now. Return an
+	 * error if not. */
+	if ((*p) || (d_dec == 0 && d_int == 0)) {
+		return SR_ERR;
+	}
+
+	*digits = d_dec - exp;
 	return SR_OK;
 }
 
@@ -788,9 +840,16 @@ SR_PRIV GString *sr_hexdump_new(const uint8_t *data, const size_t len)
 	GString *s;
 	size_t i;
 
-	s = g_string_sized_new(3 * len);
+	i = 3 * len;
+	i += len / 8;
+	i += len / 16;
+	s = g_string_sized_new(i);
 	for (i = 0; i < len; i++) {
 		if (i)
+			g_string_append_c(s, ' ');
+		if (i && (i % 8) == 0)
+			g_string_append_c(s, ' ');
+		if (i && (i % 16) == 0)
 			g_string_append_c(s, ' ');
 		g_string_append_printf(s, "%02x", data[i]);
 	}
@@ -1658,6 +1717,211 @@ SR_API char **sr_parse_probe_names(const char *spec,
 SR_API void sr_free_probe_names(char **names)
 {
 	g_strfreev(names);
+}
+
+/**
+ * Trim leading and trailing whitespace off text.
+ *
+ * @param[in] s The input text.
+ *
+ * @return Start of trimmed input text.
+ *
+ * Manipulates the caller's input text in place.
+ *
+ * @since 0.6.0
+ */
+SR_API char *sr_text_trim_spaces(char *s)
+{
+	char *p;
+
+	if (!s || !*s)
+		return s;
+
+	p = s + strlen(s);
+	while (p > s && isspace((int)p[-1]))
+		*(--p) = '\0';
+	while (isspace((int)*s))
+		s++;
+
+	return s;
+}
+
+/**
+ * Check for another complete text line, trim, return consumed char count.
+ *
+ * @param[in] s The input text, current read position.
+ * @param[in] l The input text, remaining available characters.
+ * @param[out] next Position after the current text line.
+ * @param[out] taken Count of consumed chars in current text line.
+ *
+ * @return Start of trimmed and NUL terminated text line.
+ *   Or #NULL when no text line was found.
+ *
+ * Checks for the availability of another text line of input data.
+ * Manipulates the caller's input text in place.
+ *
+ * The end-of-line condition is the LF character ('\n'). Which covers
+ * LF-only as well as CR/LF input data. CR-only and LF/CR are considered
+ * unpopular and are not supported. LF/CR may appear to work at the
+ * caller's when leading whitespace gets trimmed (line boundaries will
+ * be incorrect, but content may get processed as expected). Support for
+ * all of the above combinations breaks the detection of empty lines (or
+ * becomes unmaintainably complex).
+ *
+ * The input buffer must be end-of-line terminated, lack of EOL results
+ * in failure to detect the text line. This is motivated by accumulating
+ * input in chunks, and the desire to not process incomplete lines before
+ * their reception has completed. Callers should enforce EOL if their
+ * source of input provides an EOF condition and is unreliable in terms
+ * of text line termination.
+ *
+ * When another text line is available, it gets NUL terminated and
+ * space gets trimmed of both ends. The start position of the trimmed
+ * text line is returned. Optionally the number of consumed characters
+ * is returned to the caller. Optionally 'next' points to after the
+ * returned text line, or #NULL when no other text is available in the
+ * input buffer.
+ *
+ * The 'taken' value is not preset by this routine, only gets updated.
+ * This is convenient for callers which expect to find multiple text
+ * lines in a received chunk, before finally discarding processed data
+ * from the input buffer (which can involve expensive memory move
+ * operations, and may be desirable to defer as much as possible).
+ *
+ * @since 0.6.0
+ */
+SR_API char *sr_text_next_line(char *s, size_t l, char **next, size_t *taken)
+{
+	char *p;
+
+	if (next)
+		*next = NULL;
+	if (!l)
+		l = strlen(s);
+
+	/* Immediate reject incomplete input data. */
+	if (!s || !*s || !l)
+		return NULL;
+
+	/* Search for the next line termination. NUL terminate. */
+	p = g_strstr_len(s, l, "\n");
+	if (!p)
+		return NULL;
+	*p++ = '\0';
+	if (taken)
+		*taken += p - s;
+	l -= p - s;
+	if (next)
+		*next = l ? p : NULL;
+
+	/* Trim NUL terminated text line at both ends. */
+	s = sr_text_trim_spaces(s);
+	return s;
+}
+
+/**
+ * Isolates another space separated word in a text line.
+ *
+ * @param[in] s The input text, current read position.
+ * @param[out] next The position after the current word.
+ *
+ * @return The start of the current word. Or #NULL if there is none.
+ *
+ * Advances over leading whitespace. Isolates (NUL terminates) the next
+ * whitespace separated word. Optionally returns the position after the
+ * current word. Manipulates the caller's input text in place.
+ *
+ * @since 0.6.0
+ */
+SR_API char *sr_text_next_word(char *s, char **next)
+{
+	char *word, *p;
+
+	word = s;
+	if (next)
+		*next = NULL;
+
+	/* Immediately reject incomplete input data. */
+	if (!word || !*word)
+		return NULL;
+
+	/* Advance over optional leading whitespace. */
+	while (isspace((int)*word))
+		word++;
+	if (!*word)
+		return NULL;
+
+	/*
+	 * Advance until whitespace or end of text. Quick return when
+	 * end of input is seen. Otherwise advance over whitespace and
+	 * return the position of trailing text.
+	 */
+	p = word;
+	while (*p && !isspace((int)*p))
+		p++;
+	if (!*p)
+		return word;
+	*p++ = '\0';
+	while (isspace((int)*p))
+		p++;
+	if (!*p)
+		return word;
+	if (next)
+		*next = p;
+	return word;
+}
+
+/**
+ * Get the number of necessary bits to hold a given value. Also gets
+ * the next power-of-two value at or above the caller provided value.
+ *
+ * @param[in] value The value that must get stored.
+ * @param[out] bits The required number of bits.
+ * @param[out] power The corresponding power-of-two.
+ *
+ * @return SR_OK upon success, SR_ERR* otherwise.
+ *
+ * TODO Move this routine to a more appropriate location, it is not
+ * strictly string related.
+ *
+ * @since 0.6.0
+ */
+SR_API int sr_next_power_of_two(size_t value, size_t *bits, size_t *power)
+{
+	size_t need_bits;
+	size_t check_mask;
+
+	if (bits)
+		*bits = 0;
+	if (power)
+		*power = 0;
+
+	/*
+	 * Handle the special case of input value 0 (needs 1 bit
+	 * and results in "power of two" value 1) here. It is not
+	 * covered by the generic logic below.
+	 */
+	if (!value) {
+		if (bits)
+			*bits = 1;
+		if (power)
+			*power = 1;
+		return SR_OK;
+	}
+
+	need_bits = 0;
+	check_mask = 0;
+	do {
+		need_bits++;
+		check_mask <<= 1;
+		check_mask |= 1UL << 0;
+	} while (value & ~check_mask);
+
+	if (bits)
+		*bits = need_bits;
+	if (power)
+		*power = ++check_mask;
+	return SR_OK;
 }
 
 /** @} */
